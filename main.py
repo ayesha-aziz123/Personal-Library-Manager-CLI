@@ -1,102 +1,166 @@
-import json
+import os
+import sqlite3
+from colorama import Fore, Style, init
 
-def load_books():
-    try:
-        with open("library.txt","r") as file:
-            return json.load(file)
-    except FileNotFoundError:
-        return []
-    
-def save_books(books):
-    with open("library.txt","w") as file:
-        json.dump(books,file,indent=4) 
+# Initialize colorama
+init(autoreset=True)
 
-books = load_books()
+# Database file
+DATABASE_FILE = "library.db"
 
+# Initialize the database and create table if not exists
+def initialize_database():
+    conn = sqlite3.connect(DATABASE_FILE)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS books
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  title TEXT NOT NULL,
+                  author TEXT NOT NULL,
+                  year INTEGER NOT NULL,
+                  genre TEXT NOT NULL,
+                  read_status INTEGER NOT NULL)''')
+    conn.commit()
+    conn.close()
+
+
+# Add a book to the library
 def add_book():
-    title = input("Enter the book title:")
-    author = input("Enter the author: ")
-    year = int(input("Enter the publication year: "))
-    genre = input("Enter the genre: ")
-    read_status = input("Have you read this book? (yes/no): ").strip().lower() == "yes"
-    books.append({"Title": title, "Author": author,"Year":year,"Genre":genre,"Read":read_status})
-    save_books(books)
-    print("Book added successfully!✅\n")
+    print(Fore.CYAN + "\n📖 Add a Book")
+    title = input("📌 " + Fore.YELLOW + "Enter the book title: " + Fore.RESET)
+    author = input("✍️ " + Fore.YELLOW + "Enter the author's name: " + Fore.RESET)
+    year = input("📅 " + Fore.YELLOW + "Enter the publication year: " + Fore.RESET)
+    genre = input("📚 " + Fore.YELLOW + "Enter the genre: " + Fore.RESET)
+    read_status = input("📖 " + Fore.YELLOW + "Have you read this book? (Yes/No): " + Fore.RESET).strip().lower() == "yes"
     
-def remove():
-    title = input("Enter the 👉(title) name of the book to remove: ")
-    global books 
-    books = [book for book in books if book["Title"] != title]  
-    save_books(books)  
-    print("Book removed successfully!✔\n")
+    if title and author and genre and year.isdigit():
+        conn = sqlite3.connect(DATABASE_FILE)
+        c = conn.cursor()
+        c.execute("INSERT INTO books (title, author, year, genre, read_status) VALUES (?, ?, ?, ?, ?)",
+                  (title, author, int(year), genre, read_status))
+        conn.commit()
+        conn.close()
+        print(Fore.GREEN + "✅ Book added successfully!")
+    else:
+        print(Fore.RED + "❌ Please fill in all fields correctly.")
 
 
+# Remove a book from the library by title
+def remove_book():
+    print(Fore.RED + "\n❌ Remove a Book")
+    title = input("🔍 " + Fore.YELLOW + "Enter the title of the book to remove: " + Fore.RESET)
+    
+    if title:
+        conn = sqlite3.connect(DATABASE_FILE)
+        c = conn.cursor()
+        c.execute("DELETE FROM books WHERE title = ?", (title,))
+        conn.commit()
+        conn.close()
+        print(Fore.GREEN + f"✅ '{title}' removed successfully!")
+    else:
+        print(Fore.RED + "❌ Please enter a title.")
+
+
+# Search for a book by title or author
 def search_book():
-    search_query = input("Enter book title or author to search: ").lower()
-    results = [search_book for search_book in books if search_query in search_book["Title"] or search_query in search_book["Author"]]
-    if results:
-        for book in results:
-            print(f"""
-                  Title: {book['Title']} 
-                  Author: {book['Author']}
-                  Year: {book['Year']}
-                  Genre: {book['Genre']}
-                  Read: {'Read' if book['Read'] else 'Unread'}""")
-    else:
-        print("No books found.❌\n")
+    print(Fore.YELLOW + "\n🔍 Search for a Book")
+    search_by = input(Fore.CYAN + "Search by (Title/Author): ").strip().lower()
+    search_term = input(Fore.CYAN + f"Enter the {search_by}: ").strip().lower()
+    
+    if search_term:
+        conn = sqlite3.connect(DATABASE_FILE)
+        c = conn.cursor()
+        if search_by == "title":
+            c.execute("SELECT * FROM books WHERE LOWER(title) LIKE ?", ('%' + search_term + '%',))
+        elif search_by == "author":
+            c.execute("SELECT * FROM books WHERE LOWER(author) LIKE ?", ('%' + search_term + '%',))
+        matching_books = c.fetchall()
+        conn.close()
         
-def display_books():
-    if books:
-        for book in books:
-            print("----------------------------------------------------------------------------")
-            print(f"{book['Title']} by {book['Author']} ({book['Year']}) - {book['Genre']} - {'Read' if book['Read'] else 'Unread'}")
-            print("----------------------------------------------------------------------------")
-
+        if matching_books:
+            print(Fore.GREEN + "📚 Matching Books:")
+            for i, book in enumerate(matching_books, start=1):
+                status = Fore.GREEN + "✅ Read" if book[5] else Fore.RED + "❌ Unread"
+                print(f"{Fore.BLUE}{i}. {Fore.YELLOW}{book[1]} {Fore.WHITE}by {book[2]} ({book[3]}) - {book[4]} - {status}")
+        else:
+            print(Fore.RED + "❌ No matching books found.")
     else:
-        print("No books added yet 🙅‍♂️‼.\n")
+        print(Fore.RED + "❌ Please enter a search term.")
 
 
+# Display all books in the library
+def display_all_books():
+    print(Fore.BLUE + "\n📚 Your Library")
+    conn = sqlite3.connect(DATABASE_FILE)
+    c = conn.cursor()
+    c.execute("SELECT * FROM books")
+    books = c.fetchall()
+    conn.close()
+    
+    if not books:
+        print(Fore.RED + "🚫 No books in the library.")
+        return
+    
+    for i, book in enumerate(books, start=1):
+        status = Fore.GREEN + "✅ Read" if book[5] else Fore.RED + "❌ Unread"
+        print(f"{Fore.MAGENTA}{i}. {Fore.YELLOW}{book[1]} {Fore.WHITE}by {book[2]} ({book[3]}) - {book[4]} - {status}")
+
+
+# Display library statistics
 def display_statistics():
-    total_books = len(books)
-    read_books = len([book for book in books if book["Read"]])
-    print(f"Total books: {total_books}")
-    print(f"Books Read: {read_books}")
-    print(f"Percentage Read: {read_books / total_books * 100:.2f}%" if total_books > 0 else "No books available to calculate statistics.\n")
+    print(Fore.BLUE + "\n📊 Library Statistics")
+    conn = sqlite3.connect(DATABASE_FILE)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM books")
+    total_books = c.fetchone()[0]
+    
+    if total_books == 0:
+        print(Fore.RED + "🚫 No books in the library.")
+        return
+    
+    c.execute("SELECT COUNT(*) FROM books WHERE read_status = 1")
+    read_books = c.fetchone()[0]
+    percentage_read = (read_books / total_books) * 100
+    
+    print(Fore.YELLOW + f"📖 **Total books:** {Fore.GREEN}{total_books}")
+    print(Fore.CYAN + f"📈 **Percentage read:** {Fore.GREEN}{percentage_read:.1f}%")
+    conn.close()
 
 
-        
+# Main Menu
 def main():
-    global books
-    books = load_books()
+    print(Fore.BLUE + "📚 Personal Library Manager")
+    print(Fore.CYAN + "Welcome to your personal library! Manage your book collection with ease.")
+    
+    # Initialize database at startup
+    initialize_database()
+    
     while True:
-        print("\n\tWelcome to your Personal Library Manager!📚\n")
-        print("1.➕ Add a book")
-        print("2.❌Remove a book")
-        print("3.🔍 Search for a book")
-        print("4.📖 Display all books")
-        print("5.📊 Display statistics")
-        print("6.🚪 Exit")
-        choice = input("👉 Enter your choice: ")
+        print(Fore.MAGENTA + "\n📜 Menu:")
+        print(Fore.YELLOW + "1️⃣  Add a Book")
+        print(Fore.YELLOW + "2️⃣  Remove a Book")
+        print(Fore.YELLOW + "3️⃣  Search for a Book")
+        print(Fore.YELLOW + "4️⃣  Display All Books")
+        print(Fore.YELLOW + "5️⃣  Display Statistics")
+        print(Fore.RED + "6️⃣  Exit")
         
-        if  choice == "1":
+        choice = input(Fore.CYAN + "🎯 Choose an option (1-6): ").strip()
+        
+        if choice == "1":
             add_book()
         elif choice == "2":
-            remove()
-        elif choice == "3": 
+            remove_book()
+        elif choice == "3":
             search_book()
         elif choice == "4":
-            display_books()
+            display_all_books()
         elif choice == "5":
             display_statistics()
         elif choice == "6":
-            save_books(books)
-            print("Library saved to file. Goodbye!😊👋")
+            print(Fore.RED + "👋 Goodbye! Happy Reading! 📖")
             break
-    
         else:
-            print("Invalid choice! Please enter a number between 1-6.\n")
+            print(Fore.RED + "❌ Invalid choice. Please select a valid option.")
 
 
 if __name__ == "__main__":
     main()
-    
